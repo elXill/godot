@@ -42,11 +42,16 @@
 #include "editor/gui/editor_file_dialog.h"
 #include "scene/animation/animation_blend_tree.h"
 #include "scene/animation/animation_player.h"
+#include "scene/gui/check_box.h"
 #include "scene/gui/menu_button.h"
 #include "scene/gui/option_button.h"
 #include "scene/gui/panel.h"
 #include "scene/gui/panel_container.h"
+#include "scene/gui/scroll_container.h"
 #include "scene/gui/separator.h"
+#include "scene/gui/split_container.h"
+#include "scene/gui/tab_container.h"
+#include "scene/gui/texture_rect.h"
 #include "scene/gui/tree.h"
 #include "scene/main/viewport.h"
 #include "scene/main/window.h"
@@ -211,6 +216,7 @@ void AnimationNodeStateMachineEditor::_state_machine_gui_input(const Ref<InputEv
 				selected_node = node_rects[i].node_name;
 
 				if (!selected_nodes.has(selected_node)) {
+					_node_clicked_sidebar_action(selected_node);
 					selected_nodes.clear();
 				}
 
@@ -227,6 +233,8 @@ void AnimationNodeStateMachineEditor::_state_machine_gui_input(const Ref<InputEv
 				_update_mode();
 				return;
 			}
+
+			_node_clicked_sidebar_action(StringName());
 		}
 
 		//test the lines now
@@ -837,6 +845,7 @@ void AnimationNodeStateMachineEditor::_add_transition(const bool p_nested_action
 			EditorNode::get_singleton()->push_item(tr.ptr(), "", true);
 			EditorNode::get_singleton()->push_item(nullptr, "", true);
 		}
+		_update_transition_buttons();
 		_update_mode();
 	}
 
@@ -952,41 +961,43 @@ void AnimationNodeStateMachineEditor::_state_machine_draw() {
 		String name = E;
 		int name_string_size = theme_cache.node_title_font->get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, theme_cache.node_title_font_size).width;
 
-		Ref<AnimationNode> anode = state_machine->get_node(name);
-		bool needs_editor = AnimationTreeEditor::get_singleton()->can_edit(anode);
-		bool is_selected = selected_nodes.has(name);
+		if (state_machine->_get_node_visibility(name)) {
+			Ref<AnimationNode> anode = state_machine->get_node(name);
+			bool needs_editor = AnimationTreeEditor::get_singleton()->can_edit(anode);
+			bool is_selected = selected_nodes.has(name);
 
-		Size2 s = (is_selected ? theme_cache.node_frame_selected : theme_cache.node_frame)->get_minimum_size();
-		s.width += name_string_size;
-		s.height += MAX(theme_cache.node_title_font->get_height(theme_cache.node_title_font_size), theme_cache.play_node->get_height());
-		s.width += sep + theme_cache.play_node->get_width();
+			Size2 s = (is_selected ? theme_cache.node_frame_selected : theme_cache.node_frame)->get_minimum_size();
+			s.width += name_string_size;
+			s.height += MAX(theme_cache.node_title_font->get_height(theme_cache.node_title_font_size), theme_cache.play_node->get_height());
+			s.width += sep + theme_cache.play_node->get_width();
 
-		if (needs_editor) {
-			s.width += sep + theme_cache.edit_node->get_width();
+			if (needs_editor) {
+				s.width += sep + theme_cache.edit_node->get_width();
+			}
+
+			Vector2 offset;
+			offset += state_machine->get_node_position(E) * EDSCALE;
+
+			if (selected_nodes.has(E) && dragging_selected) {
+				offset += drag_ofs;
+			}
+
+			offset -= s / 2;
+			offset = offset.floor();
+
+			//prepre rect
+
+			NodeRect nr;
+			nr.node = Rect2(offset, s);
+			nr.node_name = E;
+
+			scroll_range = scroll_range.merge(nr.node); //merge with range
+
+			//now scroll it to draw
+			nr.node.position -= state_machine->get_graph_offset() * EDSCALE;
+
+			node_rects.push_back(nr);
 		}
-
-		Vector2 offset;
-		offset += state_machine->get_node_position(E) * EDSCALE;
-
-		if (selected_nodes.has(E) && dragging_selected) {
-			offset += drag_ofs;
-		}
-
-		offset -= s / 2;
-		offset = offset.floor();
-
-		//prepre rect
-
-		NodeRect nr;
-		nr.node = Rect2(offset, s);
-		nr.node_name = E;
-
-		scroll_range = scroll_range.merge(nr.node); //merge with range
-
-		//now scroll it to draw
-		nr.node.position -= state_machine->get_graph_offset() * EDSCALE;
-
-		node_rects.push_back(nr);
 	}
 
 	transition_lines.clear();
@@ -1028,6 +1039,10 @@ void AnimationNodeStateMachineEditor::_state_machine_draw() {
 		tl.to_node = state_machine->get_transition_to(i);
 		Vector2 ofs_to = (dragging_selected && selected_nodes.has(tl.to_node)) ? drag_ofs : Vector2();
 		tl.to = (state_machine->get_node_position(tl.to_node) * EDSCALE) + ofs_to - state_machine->get_graph_offset() * EDSCALE;
+
+		if (!state_machine->_get_node_visibility(tl.from_node) || !state_machine->_get_node_visibility(tl.to_node)) {
+			continue;
+		}
 
 		Ref<AnimationNodeStateMachineTransition> tr = state_machine->get_transition(i);
 		tl.disabled = bool(tr->get_advance_mode() == AnimationNodeStateMachineTransition::ADVANCE_MODE_DISABLED);
@@ -1102,60 +1117,62 @@ void AnimationNodeStateMachineEditor::_state_machine_draw() {
 	//draw actual nodes
 	for (int i = 0; i < node_rects.size(); i++) {
 		String name = node_rects[i].node_name;
-		int name_string_size = theme_cache.node_title_font->get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, theme_cache.node_title_font_size).width;
+		if (state_machine->_get_node_visibility(name)) {
+			int name_string_size = theme_cache.node_title_font->get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, theme_cache.node_title_font_size).width;
 
-		Ref<AnimationNode> anode = state_machine->get_node(name);
-		bool needs_editor = AnimationTreeEditor::get_singleton()->can_edit(anode);
-		bool is_selected = selected_nodes.has(name);
+			Ref<AnimationNode> anode = state_machine->get_node(name);
+			bool needs_editor = AnimationTreeEditor::get_singleton()->can_edit(anode);
+			bool is_selected = selected_nodes.has(name);
 
-		NodeRect &nr = node_rects.write[i];
-		Vector2 offset = nr.node.position;
-		int h = nr.node.size.height;
+			NodeRect &nr = node_rects.write[i];
+			Vector2 offset = nr.node.position;
+			int h = nr.node.size.height;
 
-		//prepre rect
+			//prepre rect
 
-		//now scroll it to draw
-		Ref<StyleBox> node_frame_style = is_selected ? theme_cache.node_frame_selected : theme_cache.node_frame;
-		state_machine_draw->draw_style_box(node_frame_style, nr.node);
+			//now scroll it to draw
+			Ref<StyleBox> node_frame_style = is_selected ? theme_cache.node_frame_selected : theme_cache.node_frame;
+			state_machine_draw->draw_style_box(node_frame_style, nr.node);
 
-		if (!is_selected && state_machine->start_node == name) {
-			state_machine_draw->draw_style_box(theme_cache.node_frame_start, nr.node);
-		}
-		if (!is_selected && state_machine->end_node == name) {
-			state_machine_draw->draw_style_box(theme_cache.node_frame_end, nr.node);
-		}
-		if (playing && (blend_from == name || current == name || travel_path.has(name))) {
-			state_machine_draw->draw_style_box(theme_cache.node_frame_playing, nr.node);
-		}
+			if (!is_selected && state_machine->start_node == name) {
+				state_machine_draw->draw_style_box(theme_cache.node_frame_start, nr.node);
+			}
+			if (!is_selected && state_machine->end_node == name) {
+				state_machine_draw->draw_style_box(theme_cache.node_frame_end, nr.node);
+			}
+			if (playing && (blend_from == name || current == name || travel_path.has(name))) {
+				state_machine_draw->draw_style_box(theme_cache.node_frame_playing, nr.node);
+			}
 
-		offset.x += node_frame_style->get_offset().x;
+			offset.x += node_frame_style->get_offset().x;
 
-		nr.play.position = offset + Vector2(0, (h - theme_cache.play_node->get_height()) / 2).floor();
-		nr.play.size = theme_cache.play_node->get_size();
+			nr.play.position = offset + Vector2(0, (h - theme_cache.play_node->get_height()) / 2).floor();
+			nr.play.size = theme_cache.play_node->get_size();
 
-		if (hovered_node_name == name && hovered_node_area == HOVER_NODE_PLAY) {
-			state_machine_draw->draw_texture(theme_cache.play_node, nr.play.position, theme_cache.highlight_color);
-		} else {
-			state_machine_draw->draw_texture(theme_cache.play_node, nr.play.position);
-		}
-
-		offset.x += sep + theme_cache.play_node->get_width();
-
-		nr.name.position = offset + Vector2(0, (h - theme_cache.node_title_font->get_height(theme_cache.node_title_font_size)) / 2).floor();
-		nr.name.size = Vector2(name_string_size, theme_cache.node_title_font->get_height(theme_cache.node_title_font_size));
-
-		state_machine_draw->draw_string(theme_cache.node_title_font, nr.name.position + Vector2(0, theme_cache.node_title_font->get_ascent(theme_cache.node_title_font_size)), name, HORIZONTAL_ALIGNMENT_LEFT, -1, theme_cache.node_title_font_size, theme_cache.node_title_font_color);
-		offset.x += name_string_size + sep;
-
-		nr.can_edit = needs_editor;
-		if (needs_editor) {
-			nr.edit.position = offset + Vector2(0, (h - theme_cache.edit_node->get_height()) / 2).floor();
-			nr.edit.size = theme_cache.edit_node->get_size();
-
-			if (hovered_node_name == name && hovered_node_area == HOVER_NODE_EDIT) {
-				state_machine_draw->draw_texture(theme_cache.edit_node, nr.edit.position, theme_cache.highlight_color);
+			if (hovered_node_name == name && hovered_node_area == HOVER_NODE_PLAY) {
+				state_machine_draw->draw_texture(theme_cache.play_node, nr.play.position, theme_cache.highlight_color);
 			} else {
-				state_machine_draw->draw_texture(theme_cache.edit_node, nr.edit.position);
+				state_machine_draw->draw_texture(theme_cache.play_node, nr.play.position);
+			}
+
+			offset.x += sep + theme_cache.play_node->get_width();
+
+			nr.name.position = offset + Vector2(0, (h - theme_cache.node_title_font->get_height(theme_cache.node_title_font_size)) / 2).floor();
+			nr.name.size = Vector2(name_string_size, theme_cache.node_title_font->get_height(theme_cache.node_title_font_size));
+
+			state_machine_draw->draw_string(theme_cache.node_title_font, nr.name.position + Vector2(0, theme_cache.node_title_font->get_ascent(theme_cache.node_title_font_size)), name, HORIZONTAL_ALIGNMENT_LEFT, -1, theme_cache.node_title_font_size, theme_cache.node_title_font_color);
+			offset.x += name_string_size + sep;
+
+			nr.can_edit = needs_editor;
+			if (needs_editor) {
+				nr.edit.position = offset + Vector2(0, (h - theme_cache.edit_node->get_height()) / 2).floor();
+				nr.edit.size = theme_cache.edit_node->get_size();
+
+				if (hovered_node_name == name && hovered_node_area == HOVER_NODE_EDIT) {
+					state_machine_draw->draw_texture(theme_cache.edit_node, nr.edit.position, theme_cache.highlight_color);
+				} else {
+					state_machine_draw->draw_texture(theme_cache.edit_node, nr.edit.position);
+				}
 			}
 		}
 	}
@@ -1268,6 +1285,8 @@ void AnimationNodeStateMachineEditor::_update_graph() {
 
 	state_machine_draw->queue_redraw();
 
+	_draw_side_panel_variable_elements();
+
 	updating = false;
 }
 
@@ -1277,6 +1296,7 @@ void AnimationNodeStateMachineEditor::_notification(int p_what) {
 			panel->add_theme_style_override("panel", theme_cache.panel_style);
 			error_panel->add_theme_style_override("panel", theme_cache.error_panel_style);
 			error_label->add_theme_color_override("font_color", theme_cache.error_color);
+			transition_warning->add_theme_color_override("font_color", theme_cache.error_color);
 
 			tool_select->set_icon(theme_cache.tool_icon_select);
 			tool_create->set_icon(theme_cache.tool_icon_create);
@@ -1286,6 +1306,14 @@ void AnimationNodeStateMachineEditor::_notification(int p_what) {
 			switch_mode->add_icon_item(theme_cache.transition_icon_immediate, TTR("Immediate"));
 			switch_mode->add_icon_item(theme_cache.transition_icon_sync, TTR("Sync"));
 			switch_mode->add_icon_item(theme_cache.transition_icon_end, TTR("At End"));
+
+			show_all_node_group_button->set_icon(theme_cache.toggle_icon_visible);
+			hide_all_node_group_button->set_icon(theme_cache.toggle_icon_hidden);
+
+			for (int i = 0; i < AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT; i++) {
+				show_node_group_buttons[i]->set_icon(theme_cache.toggle_icon_visible);
+				hide_node_group_buttons[i]->set_icon(theme_cache.toggle_icon_hidden);
+			}
 
 			auto_advance->set_icon(theme_cache.play_icon_auto);
 
@@ -1608,6 +1636,303 @@ void AnimationNodeStateMachineEditor::_update_mode() {
 	}
 }
 
+void AnimationNodeStateMachineEditor::_sidepanel_tab_pressed(int p_tab) {
+	switch (p_tab) {
+		case NODE_GROUP_SELECTION_TAB: {
+			side_panel_mode = NODE_GROUP_SELECTION_TAB;
+			_draw_side_panel_variable_elements();
+		} break;
+		case EDIT_NODE_GROUP_TAB: {
+			side_panel_mode = EDIT_NODE_GROUP_TAB;
+			_draw_side_panel_variable_elements();
+		} break;
+		case NODE_TRANSITON_TAB: {
+			side_panel_mode = NODE_TRANSITON_TAB;
+			_draw_side_panel_variable_elements();
+		} break;
+		case SIDEPANEL_MINIMIZE_TAB: {
+			side_panel_mode = SIDEPANEL_MINIMIZE_TAB;
+			_draw_side_panel_variable_elements();
+		} break;
+	}
+}
+
+void AnimationNodeStateMachineEditor::_checkbox_pressed() {
+	if (selected_node) {
+		for (int i = 0; i < AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT; i++) {
+			if (node_group_select_checkboxes[i]->is_pressing()) {
+				if (node_group_select_checkboxes[i]->is_pressed()) {
+					state_machine->_set_node_group_selections(selected_node, i, 1);
+					break;
+				} else {
+					state_machine->_set_node_group_selections(selected_node, i, 0);
+					break;
+				}
+			}
+		}
+	}
+}
+
+void AnimationNodeStateMachineEditor::_show_node_group_pressed() {
+	PackedInt32Array node_group_selections;
+	List<StringName> nodes;
+	state_machine->get_node_list(&nodes);
+
+	for (int i = 0; i < AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT; i++) {
+		if (show_node_group_buttons[i]->is_pressing()) {
+			for (const StringName &E : nodes) {
+				node_group_selections = state_machine->_get_node_group_selections(E);
+				if (node_group_selections[i] == 1) {
+					state_machine->_set_node_visibility(E, true);
+				}
+			}
+		}
+	}
+	if (show_all_node_group_button->is_pressing()) {
+		for (const StringName &E : nodes) {
+			state_machine->_set_node_visibility(E, true);
+		}
+	}
+	state_machine_draw->queue_redraw();
+}
+
+void AnimationNodeStateMachineEditor::_hide_node_group_pressed() {
+	PackedInt32Array node_group_selections;
+	List<StringName> nodes;
+	state_machine->get_node_list(&nodes);
+
+	for (int i = 0; i < AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT; i++) {
+		if (hide_node_group_buttons[i]->is_pressing()) {
+			for (const StringName &E : nodes) {
+				node_group_selections = state_machine->_get_node_group_selections(E);
+				if (node_group_selections[i] == 1) {
+					state_machine->_set_node_visibility(E, false);
+				}
+			}
+		}
+	}
+	if (hide_all_node_group_button->is_pressing()) {
+		for (const StringName &E : nodes) {
+			state_machine->_set_node_visibility(E, false);
+		}
+	}
+	state_machine_draw->queue_redraw();
+}
+
+void AnimationNodeStateMachineEditor::_save_group_names() {
+	PackedStringArray new_group_names;
+	new_group_names = state_machine->_get_node_group_names();
+
+	for (int i = 0; i < AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT; i++) {
+		if (node_group_name_line[i]->get_text() != String()) {
+			new_group_names.set(i, node_group_name_line[i]->get_text());
+			node_group_labels[i]->set_text(node_group_name_line[i]->get_text());
+			node_group_name_line[i]->set_placeholder(node_group_name_line[i]->get_text());
+		}
+	}
+
+	state_machine->_set_node_group_names(new_group_names);
+}
+
+void AnimationNodeStateMachineEditor::_update_transition_buttons() {
+	int transition_button_count;
+
+	for (int i = 0; i < TRANSITION_PANEL_BUTTON_LIMIT; i++) {
+		transition_buttons[i]->set_visible(false);
+	}
+	transition_warning->set_visible(false);
+	transition_to_index_priority.clear();
+	transition_from_index_priority.clear();
+
+	//Transition Button filtration and populating it's index array
+	for (int i = 0; i < state_machine->get_transition_count(); i++) {
+		if (transition_visible_checkbox_4->is_pressed()) {
+			if (!(state_machine->_get_node_visibility(state_machine->get_transition_from(i)) && state_machine->_get_node_visibility(state_machine->get_transition_to(i)))) {
+				continue;
+			}
+		}
+		if (transition_hidden_checkbox_4->is_pressed()) {
+			if (state_machine->_get_node_visibility(state_machine->get_transition_from(i)) && state_machine->_get_node_visibility(state_machine->get_transition_to(i))) {
+				continue;
+			}
+		}
+		if (transition_to_checkbox_4->is_pressed() && state_machine->get_transition_to(i) == selected_node) {
+			continue;
+		}
+		if (transition_from_checkbox_4->is_pressed() && state_machine->get_transition_from(i) == selected_node) {
+			continue;
+		}
+
+		if (state_machine->get_transition_from(i) == selected_node) {
+			transition_to_index_priority.push_back({ i, state_machine->get_transition(i)->get_priority() });
+		}
+		if (state_machine->get_transition_to(i) == selected_node) {
+			transition_from_index_priority.push_back({ i, state_machine->get_transition(i)->get_priority() });
+		}
+	}
+
+	transition_button_count = transition_to_index_priority.size() + transition_from_index_priority.size();
+
+	_bubble_sort(transition_to_index_priority);
+	_bubble_sort(transition_from_index_priority);
+
+	if (transition_button_count > TRANSITION_PANEL_BUTTON_LIMIT) {
+		transition_button_count = TRANSITION_PANEL_BUTTON_LIMIT;
+		transition_warning->set_visible(true);
+		if (transition_to_index_priority.size() >= TRANSITION_PANEL_BUTTON_LIMIT) {
+			transition_to_index_priority.resize(TRANSITION_PANEL_BUTTON_LIMIT);
+		} else {
+			transition_from_index_priority.resize(TRANSITION_PANEL_BUTTON_LIMIT - transition_to_index_priority.size());
+		}
+	}
+
+	for (int i = 0; i < transition_to_index_priority.size(); i++) {
+		transition_button_direction[i]->set_text(">");
+		transition_button_name_label[i]->set_text(String(state_machine->get_transition_to(transition_to_index_priority[i].first)));
+		transition_button_xfade_label[i]->set_text("Xfade:" + String::num(state_machine->get_transition(transition_to_index_priority[i].first)->get_xfade_time(), 2) + String(TTR(" s")));
+		transition_button_priority_label[i]->set_text(String::num(transition_to_index_priority[i].second));
+		transition_buttons[i]->set_visible(true);
+		transition_buttons[i]->set_self_modulate(Color(0.78, 1, 0.6));
+		if (state_machine->_get_node_visibility(state_machine->get_transition_to(transition_to_index_priority[i].first))) {
+			transition_buttons[i]->set_modulate(Color(1, 1, 1));
+		} else {
+			transition_buttons[i]->set_modulate(Color(.5, .5, .5));
+		}
+	}
+	for (int i = transition_to_index_priority.size(); i < transition_button_count; i++) {
+		transition_button_direction[i]->set_text("<");
+		transition_button_name_label[i]->set_text(String(state_machine->get_transition_from(transition_from_index_priority[i - transition_to_index_priority.size()].first)));
+		transition_button_xfade_label[i]->set_text("Xfade:" + String::num(state_machine->get_transition(transition_from_index_priority[i - transition_to_index_priority.size()].first)->get_xfade_time(), 2) + String(TTR(" s")));
+		transition_button_priority_label[i]->set_text(String::num(transition_from_index_priority[i - transition_to_index_priority.size()].second));
+		transition_buttons[i]->set_visible(true);
+		transition_buttons[i]->set_self_modulate(Color(1, .56, .5));
+		if (state_machine->_get_node_visibility(state_machine->get_transition_from(transition_from_index_priority[i - transition_to_index_priority.size()].first))) {
+			transition_buttons[i]->set_modulate(Color(1, 1, 1));
+		} else {
+			transition_buttons[i]->set_modulate(Color(.5, .5, .5));
+		}
+	}
+}
+
+void AnimationNodeStateMachineEditor::_bubble_sort(Vector<Pair<int, int>> &array) {
+	bool swapped;
+	int n = array.size();
+	Pair<int, int> temp;
+
+	for (int i = 0; i < n - 1; ++i) {
+		swapped = false;
+		for (int j = 0; j < n - i - 1; ++j) {
+			if (array[j].second > array[j + 1].second) {
+				temp = array[j];
+				array.set(j, array[j + 1]);
+				array.set(j + 1, temp);
+				swapped = true;
+			}
+		}
+		if (!swapped) {
+			break;
+		}
+	}
+}
+
+void AnimationNodeStateMachineEditor::_draw_side_panel_variable_elements() {
+	PackedStringArray group_names = state_machine->_get_node_group_names();
+
+	switch (side_panel_mode) {
+		case SIDEPANEL_MINIMIZE_TAB: {
+			if (!sidepanel_closed) {
+				sidepanel_closed = true;
+				sidepanel_node_groups_main->set_visible(false);
+				sidepanel_edit_node_groups_main->set_visible(false);
+				sidepanel_transitions_main->set_visible(false);
+				sidepanel_tabs->set_tabs_visible(false);
+				open_sidemenu_button->set_visible(true);
+				hsplit->set_collapsed(true);
+			}
+		} break;
+		case NODE_GROUP_SELECTION_TAB: {
+			for (int i = 0; i < AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT; i++) {
+				node_group_labels[i]->set_text(group_names[i]);
+			}
+		} break;
+		case EDIT_NODE_GROUP_TAB: {
+			for (int i = 0; i < AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT; i++) {
+				node_group_name_line[i]->set_placeholder(group_names[i]);
+			}
+			if (selected_node) {
+				sidepanel_edit_title->set_text(String(selected_node));
+				sidepanel_edit_title->add_theme_color_override("font_color", Color(.55, .93, .59));
+				for (int i = 0; i < AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT; i++) {
+					node_group_labels[i]->set_text(group_names[i]);
+					node_group_select_checkboxes[i]->set_pressed(bool(state_machine->_get_node_group_selections(selected_node)[i]));
+					node_group_select_checkboxes[i]->set_disabled(false);
+				}
+
+			} else {
+				sidepanel_edit_title->set_text(String(TTR("Select A Node")));
+				sidepanel_edit_title->add_theme_color_override("font_color", Color(1, .5, .5));
+			}
+		} break;
+		case NODE_TRANSITON_TAB: {
+			_update_transition_buttons();
+		} break;
+	}
+}
+
+void AnimationNodeStateMachineEditor::_node_clicked_sidebar_action(const StringName &p_node_name) {
+	if (side_panel_mode == EDIT_NODE_GROUP_TAB) {
+		if (p_node_name) {
+			for (int i = 0; i < AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT; i++) {
+				node_group_select_checkboxes[i]->set_disabled(false);
+				node_group_select_checkboxes[i]->set_pressed(bool(state_machine->_get_node_group_selections(selected_node)[i]));
+				sidepanel_edit_title->set_text(String(selected_node));
+				sidepanel_edit_title->add_theme_color_override("font_color", Color(.55, .93, .59));
+				sidepanel_edit_title->set_visible(true);
+			}
+		} else {
+			for (int i = 0; i < AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT; i++) {
+				node_group_select_checkboxes[i]->set_disabled(true);
+			}
+		}
+	}
+	if (side_panel_mode == NODE_TRANSITON_TAB) {
+		_update_transition_buttons();
+	}
+}
+
+void AnimationNodeStateMachineEditor::_open_sidepanel() {
+	hsplit->set_collapsed(false);
+	sidepanel_closed = false;
+	sidepanel_node_groups_main->set_visible(true);
+	sidepanel_edit_node_groups_main->set_visible(true);
+	sidepanel_transitions_main->set_visible(true);
+	sidepanel_tabs->set_tabs_visible(true);
+	side_panel_mode = NODE_GROUP_SELECTION_TAB;
+	sidepanel_tabs->set_current_tab(1);
+	_draw_side_panel_variable_elements();
+}
+
+void AnimationNodeStateMachineEditor::_select_with_transition_button() {
+	int button_index;
+	for (int i = 0; i < TRANSITION_PANEL_BUTTON_LIMIT; i++) {
+		if (transition_to_index_priority.size() > i) {
+			if (transition_buttons[i]->is_pressing()) {
+				button_index = i;
+				Ref<AnimationNodeStateMachineTransition> tr = state_machine->get_transition(transition_to_index_priority[button_index].first);
+				EditorNode::get_singleton()->push_item(tr.ptr(), "", true);
+				break;
+			}
+		} else {
+			if (transition_buttons[i]->is_pressing()) {
+				button_index = i - transition_to_index_priority.size();
+				Ref<AnimationNodeStateMachineTransition> tr = state_machine->get_transition(transition_from_index_priority[button_index].first);
+				EditorNode::get_singleton()->push_item(tr.ptr(), "", true);
+				break;
+			}
+		}
+	}
+}
+
 void AnimationNodeStateMachineEditor::_bind_methods() {
 	ClassDB::bind_method("_update_graph", &AnimationNodeStateMachineEditor::_update_graph);
 	ClassDB::bind_method("_open_editor", &AnimationNodeStateMachineEditor::_open_editor);
@@ -1625,6 +1950,9 @@ void AnimationNodeStateMachineEditor::_bind_methods() {
 	BIND_THEME_ITEM_EXT(Theme::DATA_TYPE_ICON, AnimationNodeStateMachineEditor, tool_icon_create, "ToolAddNode", "EditorIcons");
 	BIND_THEME_ITEM_EXT(Theme::DATA_TYPE_ICON, AnimationNodeStateMachineEditor, tool_icon_connect, "ToolConnect", "EditorIcons");
 	BIND_THEME_ITEM_EXT(Theme::DATA_TYPE_ICON, AnimationNodeStateMachineEditor, tool_icon_erase, "Remove", "EditorIcons");
+
+	BIND_THEME_ITEM_EXT(Theme::DATA_TYPE_ICON, AnimationNodeStateMachineEditor, toggle_icon_visible, "GuiVisibilityVisible", "EditorIcons");
+	BIND_THEME_ITEM_EXT(Theme::DATA_TYPE_ICON, AnimationNodeStateMachineEditor, toggle_icon_hidden, "GuiVisibilityHidden", "EditorIcons");
 
 	BIND_THEME_ITEM_EXT(Theme::DATA_TYPE_ICON, AnimationNodeStateMachineEditor, transition_icon_immediate, "TransitionImmediate", "EditorIcons");
 	BIND_THEME_ITEM_EXT(Theme::DATA_TYPE_ICON, AnimationNodeStateMachineEditor, transition_icon_sync, "TransitionSync", "EditorIcons");
@@ -1677,7 +2005,11 @@ AnimationNodeStateMachineEditor::AnimationNodeStateMachineEditor() {
 	add_child(top_hb);
 
 	Ref<ButtonGroup> bg;
+	Ref<ButtonGroup> transition_visible_bg;
+	Ref<ButtonGroup> transition_direction_bg;
 	bg.instantiate();
+	transition_visible_bg.instantiate();
+	transition_direction_bg.instantiate();
 
 	tool_select = memnew(Button);
 	tool_select->set_theme_type_variation("FlatButton");
@@ -1739,11 +2071,16 @@ AnimationNodeStateMachineEditor::AnimationNodeStateMachineEditor() {
 	play_mode = memnew(OptionButton);
 	top_hb->add_child(play_mode);
 
+	hsplit = memnew(HSplitContainer);
+	add_child(hsplit);
+	hsplit->set_v_size_flags(SIZE_EXPAND_FILL);
+
 	panel = memnew(PanelContainer);
 	panel->set_clip_contents(true);
 	panel->set_mouse_filter(Control::MOUSE_FILTER_PASS);
-	add_child(panel);
+	hsplit->add_child(panel);
 	panel->set_v_size_flags(SIZE_EXPAND_FILL);
+	panel->set_h_size_flags(SIZE_EXPAND_FILL);
 
 	state_machine_draw = memnew(Control);
 	panel->add_child(state_machine_draw);
@@ -1757,6 +2094,327 @@ AnimationNodeStateMachineEditor::AnimationNodeStateMachineEditor() {
 	state_machine_play_pos->set_mouse_filter(MOUSE_FILTER_PASS); //pass all to parent
 	state_machine_play_pos->set_anchors_and_offsets_preset(PRESET_FULL_RECT);
 	state_machine_play_pos->connect("draw", callable_mp(this, &AnimationNodeStateMachineEditor::_state_machine_pos_draw_all));
+
+	sidepanel = memnew(PanelContainer);
+	hsplit->add_child(sidepanel);
+	sidepanel->set_clip_contents(true);
+
+	sidepanel_rect = memnew(MarginContainer);
+	sidepanel->add_child(sidepanel_rect);
+
+	sidepanel_tabs = memnew(TabContainer);
+	sidepanel_tabs->set_use_hidden_tabs_for_min_size(true);
+	sidepanel_rect->add_child(sidepanel_tabs);
+	sidepanel_tabs->connect("tab_changed", callable_mp(this, &AnimationNodeStateMachineEditor::_sidepanel_tab_pressed));
+
+	minimize_sidepanel = memnew(HBoxContainer);
+	sidepanel_tabs->add_child(minimize_sidepanel);
+	minimize_sidepanel->set_name(">");
+
+	open_sidemenu_button = memnew(Button);
+	minimize_sidepanel->add_child(open_sidemenu_button);
+	open_sidemenu_button->set_v_size_flags(SIZE_EXPAND_FILL);
+	open_sidemenu_button->set_text("<");
+	open_sidemenu_button->connect("pressed", callable_mp(this, &AnimationNodeStateMachineEditor::_open_sidepanel), CONNECT_DEFERRED);
+
+	{ //Node Group Selection Tab
+		sidepanel_node_groups = memnew(VBoxContainer);
+		sidepanel_node_groups->set_name(TTR("Groups"));
+		sidepanel_node_groups->set_clip_contents(true);
+		sidepanel_tabs->add_child(sidepanel_node_groups);
+
+		sidepanel_node_groups_main = memnew(VBoxContainer);
+		sidepanel_node_groups_main->set_clip_contents(true);
+		sidepanel_node_groups->add_child(sidepanel_node_groups_main);
+		sidepanel_node_groups_main->set_custom_minimum_size(Size2(270, 0));
+
+		h_sep = memnew(HSeparator);
+		sidepanel_node_groups_main->add_child(h_sep);
+		h_sep->set_anchors_and_offsets_preset(PRESET_TOP_WIDE);
+		h_sep->set_custom_minimum_size(Size2(0, 12));
+		h_sep->set_clip_contents(true);
+
+		visibility_reset_container = memnew(HBoxContainer);
+		sidepanel_node_groups_main->add_child(visibility_reset_container);
+		visibility_reset_container->set_h_size_flags(SIZE_EXPAND_FILL);
+
+		show_all_node_group_button = memnew(Button);
+		visibility_reset_container->add_child(show_all_node_group_button);
+		show_all_node_group_button->set_custom_minimum_size(Size2(50, 35));
+		show_all_node_group_button->connect("pressed", callable_mp(this, &AnimationNodeStateMachineEditor::_show_node_group_pressed));
+		show_all_node_group_button->set_expand_icon(true);
+		show_all_node_group_button->set_icon_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+		show_all_node_group_button->set_h_size_flags(SIZE_EXPAND_FILL);
+
+		hide_all_node_group_button = memnew(Button);
+		visibility_reset_container->add_child(hide_all_node_group_button);
+		hide_all_node_group_button->set_custom_minimum_size(Size2(50, 35));
+		hide_all_node_group_button->connect("pressed", callable_mp(this, &AnimationNodeStateMachineEditor::_hide_node_group_pressed));
+		hide_all_node_group_button->set_expand_icon(true);
+		hide_all_node_group_button->set_icon_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+		hide_all_node_group_button->set_h_size_flags(SIZE_EXPAND_FILL);
+		for (int i = 0; i < AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT; i++) {
+			{
+				node_group_hor_containers[i] = memnew(HBoxContainer);
+				sidepanel_node_groups_main->add_child(node_group_hor_containers[i]);
+				node_group_hor_containers[i]->set_h_size_flags(SIZE_EXPAND);
+
+				show_node_group_buttons[i] = memnew(Button);
+				show_node_group_buttons[i]->set_custom_minimum_size(Size2(25, 25));
+				show_node_group_buttons[i]->connect("pressed", callable_mp(this, &AnimationNodeStateMachineEditor::_show_node_group_pressed));
+
+				node_group_hor_containers[i]->add_child(show_node_group_buttons[i]);
+
+				hide_node_group_buttons[i] = memnew(Button);
+				hide_node_group_buttons[i]->set_custom_minimum_size(Size2(25, 25));
+				hide_node_group_buttons[i]->connect("pressed", callable_mp(this, &AnimationNodeStateMachineEditor::_hide_node_group_pressed));
+
+				node_group_hor_containers[i]->add_child(hide_node_group_buttons[i]);
+
+				node_group_labels[i] = memnew(Label);
+
+				node_group_hor_containers[i]->add_child(node_group_labels[i]);
+			}
+		}
+	}
+
+	{ //Node Group Edit Tab
+		sidepanel_edit_node_groups = memnew(VBoxContainer);
+		sidepanel_edit_node_groups->set_name(TTR("Edit"));
+		sidepanel_edit_node_groups->set_anchors_and_offsets_preset(PRESET_FULL_RECT);
+		sidepanel_tabs->add_child(sidepanel_edit_node_groups);
+
+		sidepanel_edit_node_groups_main = memnew(VBoxContainer);
+		sidepanel_edit_node_groups_main->set_anchors_and_offsets_preset(PRESET_FULL_RECT);
+		sidepanel_edit_node_groups->add_child(sidepanel_edit_node_groups_main);
+
+		sidepanel_edit_title = memnew(Label);
+		sidepanel_edit_node_groups_main->add_child(sidepanel_edit_title);
+
+		{ //Edit Checkboxes and Name Edit Base
+			for (int i = 0; i < AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT; i++) {
+				edit_node_group_hor_containers[i] = memnew(HBoxContainer);
+				sidepanel_edit_node_groups_main->add_child(edit_node_group_hor_containers[i]);
+
+				node_group_select_checkboxes[i] = memnew(CheckBox);
+				edit_node_group_hor_containers[i]->add_child(node_group_select_checkboxes[i]);
+				node_group_select_checkboxes[i]->connect("pressed", callable_mp(this, &AnimationNodeStateMachineEditor::_checkbox_pressed));
+				node_group_select_checkboxes[i]->set_disabled(true);
+
+				node_group_name_line[i] = memnew(LineEdit);
+				edit_node_group_hor_containers[i]->add_child(node_group_name_line[i]);
+				node_group_name_line[i]->set_expand_to_text_length_enabled(true);
+				node_group_name_line[i]->set_h_size_flags(SIZE_SHRINK_CENTER);
+				node_group_name_line[i]->set_custom_minimum_size(Size2(150, 0));
+			}
+
+			{ //Node Group Edit UI Save Button
+				sidepanel_edit_save_button = memnew(Button);
+				sidepanel_edit_node_groups_main->add_child(sidepanel_edit_save_button);
+				sidepanel_edit_save_button->connect("pressed", callable_mp(this, &AnimationNodeStateMachineEditor::_save_group_names));
+				sidepanel_edit_save_button->set_h_size_flags(SIZE_FILL);
+				sidepanel_edit_save_button->set_v_size_flags(6);
+				sidepanel_edit_save_button->set_text(TTR("Save Names"));
+				sidepanel_edit_save_button->set_stretch_ratio(1);
+
+				sidepanel_edit_squeeze_cont = memnew(HBoxContainer);
+				sidepanel_edit_node_groups_main->add_child(sidepanel_edit_squeeze_cont);
+				sidepanel_edit_squeeze_cont->set_v_size_flags(SIZE_EXPAND_FILL);
+				sidepanel_edit_squeeze_cont->set_h_size_flags(SIZE_EXPAND_FILL);
+				sidepanel_edit_squeeze_cont->set_stretch_ratio(2);
+			}
+		}
+	}
+
+	{ //Node Transition Selection Tab
+		sidepanel_transitions = memnew(VBoxContainer);
+		sidepanel_transitions->set_name(TTR("Transitions"));
+		sidepanel_transitions->set_anchors_and_offsets_preset(PRESET_FULL_RECT);
+		sidepanel_tabs->add_child(sidepanel_transitions);
+
+		sidepanel_transitions_main = memnew(VBoxContainer);
+		sidepanel_transitions_main->set_anchors_and_offsets_preset(PRESET_FULL_RECT);
+		sidepanel_transitions->add_child(sidepanel_transitions_main);
+
+		transition_radio_button_cont_0 = memnew(HBoxContainer);
+		sidepanel_transitions_main->add_child(transition_radio_button_cont_0);
+		transition_radio_button_cont_0->set_anchors_and_offsets_preset(PRESET_FULL_RECT);
+
+		transition_radio_buttons_cont_1 = memnew(HBoxContainer);
+		transition_radio_button_cont_0->add_child(transition_radio_buttons_cont_1);
+		transition_radio_buttons_cont_1->set_h_size_flags(SIZE_EXPAND_FILL);
+
+		transition_radio_buttons_spacer_2_l = memnew(BoxContainer);
+		transition_radio_buttons_cont_1->add_child(transition_radio_buttons_spacer_2_l);
+		transition_radio_buttons_spacer_2_l->set_h_size_flags(SIZE_EXPAND_FILL);
+		transition_radio_buttons_spacer_2_l->set_stretch_ratio(1);
+
+		transition_visibility_radio_buttons_cont_2 = memnew(VBoxContainer);
+		transition_radio_buttons_cont_1->add_child(transition_visibility_radio_buttons_cont_2);
+		transition_visibility_radio_buttons_cont_2->set_h_size_flags(SIZE_EXPAND_FILL);
+		transition_visibility_radio_buttons_cont_2->set_stretch_ratio(2);
+
+		sidepanel_transitions_vsep_2 = memnew(VSeparator);
+		transition_radio_buttons_cont_1->add_child(sidepanel_transitions_vsep_2);
+
+		transition_direction_radio_buttons_cont_2 = memnew(VBoxContainer);
+		transition_radio_buttons_cont_1->add_child(transition_direction_radio_buttons_cont_2);
+		transition_direction_radio_buttons_cont_2->set_h_size_flags(SIZE_EXPAND_FILL);
+		transition_direction_radio_buttons_cont_2->set_stretch_ratio(2);
+
+		transition_radio_buttons_spacer_2_r = memnew(BoxContainer);
+		transition_radio_buttons_cont_1->add_child(transition_radio_buttons_spacer_2_r);
+		transition_radio_buttons_spacer_2_r->set_stretch_ratio(1);
+		transition_radio_buttons_spacer_2_r->set_h_size_flags(SIZE_EXPAND_FILL);
+
+		transition_visible_title_3 = memnew(Label);
+		transition_visibility_radio_buttons_cont_2->add_child(transition_visible_title_3);
+		transition_visible_title_3->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+		transition_visible_title_3->set_stretch_ratio(2);
+		transition_visible_title_3->set_text(TTR("Visibility"));
+
+		transition_direction_title_3 = memnew(Label);
+		transition_direction_radio_buttons_cont_2->add_child(transition_direction_title_3);
+		transition_direction_title_3->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+		transition_direction_title_3->set_stretch_ratio(2);
+		transition_direction_title_3->set_text(TTR("Direction"));
+
+		transition_visibility_radio_buttons_hcont_3_0 = memnew(HBoxContainer);
+		transition_visibility_radio_buttons_cont_2->add_child(transition_visibility_radio_buttons_hcont_3_0);
+		transition_visibility_radio_buttons_hcont_3_1 = memnew(HBoxContainer);
+		transition_visibility_radio_buttons_cont_2->add_child(transition_visibility_radio_buttons_hcont_3_1);
+		transition_visibility_radio_buttons_hcont_3_2 = memnew(HBoxContainer);
+		transition_visibility_radio_buttons_cont_2->add_child(transition_visibility_radio_buttons_hcont_3_2);
+
+		transition_direction_radio_buttons_hcont_3_0 = memnew(HBoxContainer);
+		transition_direction_radio_buttons_cont_2->add_child(transition_direction_radio_buttons_hcont_3_0);
+		transition_direction_radio_buttons_hcont_3_1 = memnew(HBoxContainer);
+		transition_direction_radio_buttons_cont_2->add_child(transition_direction_radio_buttons_hcont_3_1);
+		transition_direction_radio_buttons_hcont_3_2 = memnew(HBoxContainer);
+		transition_direction_radio_buttons_cont_2->add_child(transition_direction_radio_buttons_hcont_3_2);
+
+		transition_all_visible_checkbox_4 = memnew(CheckBox);
+		transition_visibility_radio_buttons_hcont_3_0->add_child(transition_all_visible_checkbox_4);
+		transition_all_visible_checkbox_4->set_button_group(transition_visible_bg);
+		transition_all_visible_checkbox_4->connect("pressed", callable_mp(this, &AnimationNodeStateMachineEditor::_update_transition_buttons));
+		transition_all_visible_checkbox_4->set_pressed(true);
+
+		transition_all_visible_label_4 = memnew(Label);
+		transition_visibility_radio_buttons_hcont_3_0->add_child(transition_all_visible_label_4);
+		transition_all_visible_label_4->set_text(TTR("All"));
+
+		transition_visible_checkbox_4 = memnew(CheckBox);
+		transition_visibility_radio_buttons_hcont_3_1->add_child(transition_visible_checkbox_4);
+		transition_visible_checkbox_4->set_button_group(transition_visible_bg);
+		transition_visible_checkbox_4->connect("pressed", callable_mp(this, &AnimationNodeStateMachineEditor::_update_transition_buttons));
+
+		transition_visible_label_4 = memnew(Label);
+		transition_visibility_radio_buttons_hcont_3_1->add_child(transition_visible_label_4);
+		transition_visible_label_4->set_text(TTR("Visible"));
+
+		transition_hidden_checkbox_4 = memnew(CheckBox);
+		transition_visibility_radio_buttons_hcont_3_2->add_child(transition_hidden_checkbox_4);
+		transition_hidden_checkbox_4->set_button_group(transition_visible_bg);
+		transition_hidden_checkbox_4->connect("pressed", callable_mp(this, &AnimationNodeStateMachineEditor::_update_transition_buttons));
+
+		transition_hidden_label_4 = memnew(Label);
+		transition_visibility_radio_buttons_hcont_3_2->add_child(transition_hidden_label_4);
+		transition_hidden_label_4->set_text(TTR("Hidden"));
+
+		transition_all_direction_checkbox_4 = memnew(CheckBox);
+		transition_direction_radio_buttons_hcont_3_0->add_child(transition_all_direction_checkbox_4);
+		transition_all_direction_checkbox_4->set_button_group(transition_direction_bg);
+		transition_all_direction_checkbox_4->connect("pressed", callable_mp(this, &AnimationNodeStateMachineEditor::_update_transition_buttons));
+		transition_all_direction_checkbox_4->set_pressed(true);
+
+		transition_all_direction_label_4 = memnew(Label);
+		transition_direction_radio_buttons_hcont_3_0->add_child(transition_all_direction_label_4);
+		transition_all_direction_label_4->set_text(TTR("All"));
+
+		transition_to_checkbox_4 = memnew(CheckBox);
+		transition_direction_radio_buttons_hcont_3_1->add_child(transition_to_checkbox_4);
+		transition_to_checkbox_4->connect("pressed", callable_mp(this, &AnimationNodeStateMachineEditor::_update_transition_buttons));
+		transition_to_checkbox_4->set_button_group(transition_direction_bg);
+
+		transition_to_label_4 = memnew(Label);
+		transition_direction_radio_buttons_hcont_3_1->add_child(transition_to_label_4);
+		transition_to_label_4->set_text(TTR("To"));
+
+		transition_from_checkbox_4 = memnew(CheckBox);
+		transition_direction_radio_buttons_hcont_3_2->add_child(transition_from_checkbox_4);
+		transition_from_checkbox_4->connect("pressed", callable_mp(this, &AnimationNodeStateMachineEditor::_update_transition_buttons));
+		transition_from_checkbox_4->set_button_group(transition_direction_bg);
+
+		transition_from_label_4 = memnew(Label);
+		transition_direction_radio_buttons_hcont_3_2->add_child(transition_from_label_4);
+		transition_from_label_4->set_text(TTR("From"));
+
+		for (int i = 0; i < TRANSITION_PANEL_BUTTON_LIMIT; i++) {
+			transition_buttons[i] = memnew(Button);
+			sidepanel_transitions_main->add_child(transition_buttons[i]);
+			transition_buttons[i]->set_custom_minimum_size(Size2(150, 50));
+			transition_buttons[i]->set_visible(false);
+			transition_buttons[i]->connect("pressed", callable_mp(this, &AnimationNodeStateMachineEditor::_select_with_transition_button));
+
+			transition_button_elements[i] = memnew(HBoxContainer);
+			transition_buttons[i]->add_child(transition_button_elements[i]);
+			transition_button_elements[i]->set_anchors_and_offsets_preset(PRESET_FULL_RECT);
+
+			transition_button_priority_label[i] = memnew(Label);
+			transition_button_elements[i]->add_child(transition_button_priority_label[i]);
+			transition_button_priority_label[i]->set_anchors_and_offsets_preset(PRESET_FULL_RECT);
+			transition_button_priority_label[i]->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+			transition_button_priority_label[i]->set_vertical_alignment(VERTICAL_ALIGNMENT_CENTER);
+			transition_button_priority_label[i]->add_theme_font_size_override("font_size", 25);
+			transition_button_priority_label[i]->set_custom_minimum_size(Size2(45, 40));
+
+			transition_button_mid_section[i] = memnew(VBoxContainer);
+			transition_button_elements[i]->add_child(transition_button_mid_section[i]);
+			transition_button_mid_section[i]->set_h_size_flags(SIZE_EXPAND_FILL);
+			transition_button_mid_section[i]->set_v_size_flags(SIZE_FILL);
+
+			{
+				transition_button_name_label[i] = memnew(Label);
+				transition_button_mid_section[i]->add_child(transition_button_name_label[i]);
+				transition_button_name_label[i]->set_anchors_and_offsets_preset(PRESET_FULL_RECT);
+				transition_button_name_label[i]->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+				transition_button_name_label[i]->set_vertical_alignment(VERTICAL_ALIGNMENT_TOP);
+				transition_button_name_label[i]->set_anchors_and_offsets_preset(PRESET_CENTER);
+				transition_button_name_label[i]->set_stretch_ratio(1);
+				transition_button_name_label[i]->set_clip_text(true);
+				transition_button_name_label[i]->set_text_overrun_behavior(TextServer::OVERRUN_TRIM_ELLIPSIS);
+
+				transition_button_xfade_label[i] = memnew(Label);
+				transition_button_mid_section[i]->add_child(transition_button_xfade_label[i]);
+				transition_button_xfade_label[i]->add_theme_font_size_override("font_size", 10);
+				transition_button_xfade_label[i]->set_h_size_flags(SIZE_FILL);
+				transition_button_xfade_label[i]->set_v_size_flags(SIZE_EXPAND_FILL);
+				transition_button_xfade_label[i]->set_stretch_ratio(0.1);
+				transition_button_xfade_label[i]->set_clip_text(true);
+				transition_button_xfade_label[i]->set_text_overrun_behavior(TextServer::OVERRUN_TRIM_ELLIPSIS);
+
+				transition_button_direction[i] = memnew(Label);
+				transition_button_elements[i]->add_child(transition_button_direction[i]);
+				transition_button_direction[i]->set_anchors_and_offsets_preset(PRESET_FULL_RECT);
+				transition_button_direction[i]->set_custom_minimum_size(Size2(45, 40));
+				transition_button_direction[i]->add_theme_font_size_override("font_size", 30);
+				transition_button_direction[i]->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+				transition_button_direction[i]->set_vertical_alignment(VERTICAL_ALIGNMENT_CENTER);
+			}
+		}
+
+		transition_warning = memnew(Label);
+		sidepanel_transitions_main->add_child(transition_warning);
+		transition_warning->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
+		transition_warning->set_vertical_alignment(VERTICAL_ALIGNMENT_CENTER);
+		transition_warning->set_text("Some transitions can't be seen.");
+		transition_warning->set_visible(false);
+	}
+
+	sidepanel_node_groups_main->set_visible(false);
+	sidepanel_edit_node_groups_main->set_visible(false);
+	sidepanel_transitions_main->set_visible(false);
+	sidepanel_tabs->set_tabs_visible(false);
 
 	v_scroll = memnew(VScrollBar);
 	state_machine_draw->add_child(v_scroll);

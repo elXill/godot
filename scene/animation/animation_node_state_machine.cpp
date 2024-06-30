@@ -1275,6 +1275,14 @@ void AnimationNodeStateMachine::add_node(const StringName &p_name, Ref<Animation
 	state_new.node = p_node;
 	state_new.position = p_position;
 
+#ifdef TOOLS_ENABLED
+	PackedInt32Array node_group_selections;
+	node_group_selections.resize(STATE_MACHINE_GROUPS_LIMIT);
+	node_group_selections.fill(0);
+	state_new.node_group_selections = node_group_selections;
+	state_new.node_visibility = true;
+#endif //TOOLS_ENABLED
+
 	states[p_name] = state_new;
 
 	emit_changed();
@@ -1661,6 +1669,23 @@ bool AnimationNodeStateMachine::_set(const StringName &p_name, const Variant &p_
 			}
 			return true;
 		}
+
+#ifdef TOOLS_ENABLED
+		if (what == "node_group_selections") {
+			if (states.has(node_name)) {
+				states[node_name].node_group_selections = p_value;
+			}
+			return true;
+		}
+
+		if (what == "node_visibility") {
+			if (states.has(node_name)) {
+				states[node_name].node_visibility = p_value;
+			}
+			return true;
+		}
+#endif //TOOLS_ENABLED
+
 	} else if (prop_name == "transitions") {
 		Array trans = p_value;
 		ERR_FAIL_COND_V(trans.size() % 3 != 0, false);
@@ -1673,7 +1698,19 @@ bool AnimationNodeStateMachine::_set(const StringName &p_name, const Variant &p_
 		set_graph_offset(p_value);
 		return true;
 	}
-
+#ifdef TOOLS_ENABLED
+	else if (prop_name == "node_group_names") {
+		PackedStringArray initial_array = p_value;
+		if (initial_array.size() != STATE_MACHINE_GROUPS_LIMIT) {
+			initial_array.resize(STATE_MACHINE_GROUPS_LIMIT);
+			for (int i = 0; i < STATE_MACHINE_GROUPS_LIMIT; i++) {
+				node_group_names.set(i, TTR("Node Group - ") + String::num(i + 1));
+			}
+		}
+		_set_node_group_names(initial_array);
+		return true;
+	}
+#endif //TOOLS_ENABLED
 	return false;
 }
 
@@ -1689,6 +1726,22 @@ bool AnimationNodeStateMachine::_get(const StringName &p_name, Variant &r_ret) c
 				return true;
 			}
 		}
+
+#ifdef TOOLS_ENABLED
+		if (what == "node_group_selections") {
+			if (states.has(node_name)) {
+				r_ret = states[node_name].node_group_selections;
+				return true;
+			}
+		}
+
+		if (what == "node_visibility") {
+			if (states.has(node_name)) {
+				r_ret = states[node_name].node_visibility;
+				return true;
+			}
+		}
+#endif //TOOLS_ENABLED
 
 		if (what == "position") {
 			if (states.has(node_name)) {
@@ -1713,6 +1766,12 @@ bool AnimationNodeStateMachine::_get(const StringName &p_name, Variant &r_ret) c
 		r_ret = get_graph_offset();
 		return true;
 	}
+#ifdef TOOLS_ENABLED
+	else if (prop_name == "node_group_names") {
+		r_ret = _get_node_group_names();
+		return true;
+	}
+#endif //TOOLS_ENABLED
 
 	return false;
 }
@@ -1727,8 +1786,15 @@ void AnimationNodeStateMachine::_get_property_list(List<PropertyInfo> *p_list) c
 	for (const StringName &prop_name : names) {
 		p_list->push_back(PropertyInfo(Variant::OBJECT, "states/" + prop_name + "/node", PROPERTY_HINT_RESOURCE_TYPE, "AnimationNode", PROPERTY_USAGE_NO_EDITOR));
 		p_list->push_back(PropertyInfo(Variant::VECTOR2, "states/" + prop_name + "/position", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR));
+#ifdef TOOLS_ENABLED
+		p_list->push_back(PropertyInfo(Variant::PACKED_INT32_ARRAY, "states/" + prop_name + "/node_group_selections", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR));
+		p_list->push_back(PropertyInfo(Variant::BOOL, "states/" + prop_name + "/node_visibility", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR));
+#endif //TOOLS_ENABLED
 	}
 
+#ifdef TOOLS_ENABLED
+	p_list->push_back(PropertyInfo(Variant::PACKED_STRING_ARRAY, "node_group_names", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR));
+#endif //TOOLS_ENABLED
 	p_list->push_back(PropertyInfo(Variant::ARRAY, "transitions", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR));
 	p_list->push_back(PropertyInfo(Variant::VECTOR2, "graph_offset", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR));
 
@@ -1767,6 +1833,20 @@ void AnimationNodeStateMachine::reset_state() {
 	end.position = Vector2(900, 100);
 	states[end_node] = end;
 
+#ifdef TOOLS_ENABLED
+	end.node_group_selections.resize(STATE_MACHINE_GROUPS_LIMIT);
+	end.node_group_selections.fill(0);
+
+	start.node_group_selections.resize(STATE_MACHINE_GROUPS_LIMIT);
+	start.node_group_selections.fill(0);
+
+	node_group_names.resize(STATE_MACHINE_GROUPS_LIMIT);
+
+	for (int i = 0; i < STATE_MACHINE_GROUPS_LIMIT; i++) {
+		node_group_names.set(i, TTR("Node Group - ") + String::num(i + 1));
+	}
+#endif //TOOLS_ENABLED
+
 	emit_changed();
 	emit_signal(SNAME("tree_changed"));
 }
@@ -1780,6 +1860,36 @@ Vector2 AnimationNodeStateMachine::get_node_position(const StringName &p_name) c
 	ERR_FAIL_COND_V(!states.has(p_name), Vector2());
 	return states[p_name].position;
 }
+
+#ifdef TOOLS_ENABLED
+void AnimationNodeStateMachine::_set_node_visibility(const StringName &p_name, bool p_node_visibility) {
+	ERR_FAIL_COND(!states.has(p_name));
+	states[p_name].node_visibility = p_node_visibility;
+}
+
+bool AnimationNodeStateMachine::_get_node_visibility(const StringName &p_name) const {
+	ERR_FAIL_COND_V(!states.has(p_name), bool());
+	return states[p_name].node_visibility;
+}
+
+void AnimationNodeStateMachine::_set_node_group_selections(const StringName &p_name, int p_selection_index, int p_selection) {
+	ERR_FAIL_COND(!states.has(p_name));
+	states[p_name].node_group_selections.set(p_selection_index, p_selection);
+}
+
+PackedInt32Array AnimationNodeStateMachine::_get_node_group_selections(const StringName &p_name) const {
+	ERR_FAIL_COND_V(!states.has(p_name), PackedInt32Array());
+	return states[p_name].node_group_selections;
+}
+
+void AnimationNodeStateMachine::_set_node_group_names(const PackedStringArray &p_node_group_names) {
+	node_group_names = p_node_group_names;
+}
+
+PackedStringArray AnimationNodeStateMachine::_get_node_group_names() const {
+	return node_group_names;
+}
+#endif //TOOLS_ENABLED
 
 void AnimationNodeStateMachine::_tree_changed() {
 	emit_changed();
@@ -1805,6 +1915,17 @@ void AnimationNodeStateMachine::_bind_methods() {
 
 	ClassDB::bind_method(D_METHOD("set_node_position", "name", "position"), &AnimationNodeStateMachine::set_node_position);
 	ClassDB::bind_method(D_METHOD("get_node_position", "name"), &AnimationNodeStateMachine::get_node_position);
+
+#ifdef TOOLS_ENABLED
+	ClassDB::bind_method(D_METHOD("_set_node_visibility", "name", "node_visibility"), &AnimationNodeStateMachine::_set_node_visibility);
+	ClassDB::bind_method(D_METHOD("_get_node_visibility", "name"), &AnimationNodeStateMachine::_get_node_visibility);
+
+	ClassDB::bind_method(D_METHOD("_set_node_group_selections", "name", "selection_index", "node_group_selections"), &AnimationNodeStateMachine::_set_node_group_selections);
+	ClassDB::bind_method(D_METHOD("_get_node_group_selections", "name"), &AnimationNodeStateMachine::_get_node_group_selections);
+
+	ClassDB::bind_method(D_METHOD("_set_node_group_names", "node_group_names"), &AnimationNodeStateMachine::_set_node_group_names);
+	ClassDB::bind_method(D_METHOD("_get_node_group_names"), &AnimationNodeStateMachine::_get_node_group_names);
+#endif //TOOLS_ENABLED
 
 	ClassDB::bind_method(D_METHOD("has_transition", "from", "to"), &AnimationNodeStateMachine::has_transition);
 	ClassDB::bind_method(D_METHOD("add_transition", "from", "to", "transition"), &AnimationNodeStateMachine::add_transition);
@@ -1842,12 +1963,26 @@ AnimationNodeStateMachine::AnimationNodeStateMachine() {
 	State start;
 	start.node = s;
 	start.position = Vector2(200, 100);
-	states[start_node] = start;
 
 	Ref<AnimationNodeEndState> e;
 	e.instantiate();
 	State end;
 	end.node = e;
 	end.position = Vector2(900, 100);
+
+#ifdef TOOLS_ENABLED
+	end.node_group_selections.resize(STATE_MACHINE_GROUPS_LIMIT);
+	end.node_group_selections.fill(0);
+	start.node_group_selections.resize(STATE_MACHINE_GROUPS_LIMIT);
+	start.node_group_selections.fill(0);
+
+	node_group_names.resize(STATE_MACHINE_GROUPS_LIMIT);
+
+	for (int i = 0; i < STATE_MACHINE_GROUPS_LIMIT; i++) {
+		node_group_names.set(i, TTR("Node Group - ") + String::num(i + 1));
+	}
+#endif //TOOLS_ENABLED
+
 	states[end_node] = end;
+	states[start_node] = start;
 }

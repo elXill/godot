@@ -41,6 +41,15 @@ class ConfirmationDialog;
 class EditorFileDialog;
 class OptionButton;
 class PanelContainer;
+class HSplitContainer;
+class MarginContainer;
+class HSeparator;
+class CheckBox;
+class TabContainer;
+class AnimationNodeAnimation;
+class ScrollContainer;
+class TextureRect;
+class VSeparator;
 
 class AnimationNodeStateMachineEditor : public AnimationTreeNodeEditorPlugin {
 	GDCLASS(AnimationNodeStateMachineEditor, AnimationTreeNodeEditorPlugin);
@@ -48,6 +57,11 @@ class AnimationNodeStateMachineEditor : public AnimationTreeNodeEditorPlugin {
 	Ref<AnimationNodeStateMachine> state_machine;
 
 	bool read_only = false;
+	bool sidepanel_closed = false;
+	Vector<Pair<int, int>> transition_to_index_priority;
+	Vector<Pair<int, int>> transition_from_index_priority;
+
+	static constexpr int TRANSITION_PANEL_BUTTON_LIMIT = 9;
 
 	Button *tool_select = nullptr;
 	Button *tool_create = nullptr;
@@ -64,7 +78,95 @@ class AnimationNodeStateMachineEditor : public AnimationTreeNodeEditorPlugin {
 
 	OptionButton *play_mode = nullptr;
 
+	Button *hide_sidepanel_button = nullptr;
+	HSplitContainer *hsplit = nullptr;
+	MarginContainer *sidepanel_rect = nullptr;
+	TabContainer *sidepanel_tabs = nullptr;
+
 	PanelContainer *panel = nullptr;
+	PanelContainer *sidepanel = nullptr;
+
+	HBoxContainer *minimize_sidepanel = nullptr;
+	VBoxContainer *sidepanel_node_groups = nullptr;
+	VBoxContainer *sidepanel_node_groups_main = nullptr;
+	VBoxContainer *sidepanel_edit_node_groups = nullptr;
+	VBoxContainer *sidepanel_edit_node_groups_main = nullptr;
+
+	HBoxContainer *sidepanel_edit_node_groups_info_cont = nullptr;
+
+	HBoxContainer *sp_title_container = nullptr;
+	Label *sidepanel_edit_title = nullptr;
+	HSeparator *h_sep = nullptr;
+	HBoxContainer *visibility_reset_container = nullptr;
+
+	Button *show_all_node_group_button = nullptr;
+	Button *hide_all_node_group_button = nullptr;
+
+	HBoxContainer *transition_radio_button_cont_0 = nullptr;
+	HBoxContainer *transition_radio_buttons_cont_1 = nullptr;
+	BoxContainer *transition_radio_buttons_spacer_2_l = nullptr;
+	BoxContainer *transition_radio_buttons_spacer_2_r = nullptr;
+	VBoxContainer *transition_visibility_radio_buttons_cont_2 = nullptr;
+	VSeparator *sidepanel_transitions_vsep_2 = nullptr;
+	HBoxContainer *transition_visibility_radio_buttons_hcont_3_0 = nullptr;
+	HBoxContainer *transition_visibility_radio_buttons_hcont_3_1 = nullptr;
+	HBoxContainer *transition_visibility_radio_buttons_hcont_3_2 = nullptr;
+	VBoxContainer *transition_direction_radio_buttons_cont_2 = nullptr;
+	HBoxContainer *transition_direction_radio_buttons_hcont_3_0 = nullptr;
+	HBoxContainer *transition_direction_radio_buttons_hcont_3_1 = nullptr;
+	HBoxContainer *transition_direction_radio_buttons_hcont_3_2 = nullptr;
+
+	Label *transition_visible_title_3 = nullptr;
+	Label *transition_direction_title_3 = nullptr;
+
+	CheckBox *transition_all_visible_checkbox_4 = nullptr;
+	Label *transition_all_visible_label_4 = nullptr;
+	CheckBox *transition_visible_checkbox_4 = nullptr;
+	Label *transition_visible_label_4 = nullptr;
+	CheckBox *transition_hidden_checkbox_4 = nullptr;
+	Label *transition_hidden_label_4 = nullptr;
+
+	CheckBox *transition_all_direction_checkbox_4 = nullptr;
+	Label *transition_all_direction_label_4 = nullptr;
+	CheckBox *transition_to_checkbox_4 = nullptr;
+	Label *transition_to_label_4 = nullptr;
+	CheckBox *transition_from_checkbox_4 = nullptr;
+	Label *transition_from_label_4 = nullptr;
+	Label *transition_warning = nullptr;
+
+	HBoxContainer *node_group_hor_containers[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+	HBoxContainer *node_group_containers[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+	HBoxContainer *edit_node_group_hor_containers[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+	HBoxContainer *edit_node_group_containers[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+
+	Button *show_node_group_buttons[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+	Button *hide_node_group_buttons[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+
+	Button *transition_buttons[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+	HBoxContainer *transition_button_elements[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+	Label *transition_button_priority_label[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+	VBoxContainer *transition_button_mid_section[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+
+	Panel *transition_button_priority_panel[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+	Panel *transition_button_name_panel[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+	Panel *transition_button_icon_panel[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+
+	Label *transition_button_name_label[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+	Label *transition_button_xfade_label[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+	Label *transition_button_direction[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+
+	LineEdit *node_group_name_line[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+	CheckBox *node_group_select_checkboxes[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+	Label *node_group_labels[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+
+	VBoxContainer *sidepanel_transitions = nullptr;
+	VBoxContainer *sidepanel_transitions_main = nullptr;
+	HBoxContainer *spacer = nullptr;
+	HBoxContainer *sidepanel_edit_save_button_cont = nullptr;
+	HBoxContainer *sidepanel_edit_squeeze_cont = nullptr;
+
+	Button *open_sidemenu_button = nullptr;
+	Button *sidepanel_edit_save_button = nullptr;
 
 	StringName selected_node;
 	HashSet<StringName> selected_nodes;
@@ -87,6 +189,9 @@ class AnimationNodeStateMachineEditor : public AnimationTreeNodeEditorPlugin {
 		Ref<Texture2D> tool_icon_create;
 		Ref<Texture2D> tool_icon_connect;
 		Ref<Texture2D> tool_icon_erase;
+
+		Ref<Texture2D> toggle_icon_visible;
+		Ref<Texture2D> toggle_icon_hidden;
 
 		Ref<Texture2D> transition_icon_immediate;
 		Ref<Texture2D> transition_icon_sync;
@@ -232,14 +337,35 @@ class AnimationNodeStateMachineEditor : public AnimationTreeNodeEditorPlugin {
 		HOVER_NODE_EDIT = 1,
 	};
 
+	enum SidePanelMode {
+		SIDEPANEL_MINIMIZE_TAB = 0,
+		NODE_GROUP_SELECTION_TAB = 1,
+		EDIT_NODE_GROUP_TAB = 2,
+		NODE_TRANSITON_TAB = 3,
+	};
+
 	StringName hovered_node_name;
 	HoveredNodeArea hovered_node_area = HOVER_NODE_NONE;
+	SidePanelMode side_panel_mode = NODE_GROUP_SELECTION_TAB;
 
 	String prev_name;
 	void _name_edited(const String &p_text);
 	void _name_edited_focus_out();
 	void _open_editor(const String &p_name);
 	void _scroll_changed(double);
+
+	void _node_clicked_sidebar_action(const StringName &p_node_name);
+
+	void _checkbox_pressed();
+	void _show_node_group_pressed();
+	void _hide_node_group_pressed();
+	void _sidepanel_tab_pressed(int p_tab);
+	void _draw_side_panel_variable_elements();
+	void _save_group_names();
+	void _update_transition_buttons();
+	void _bubble_sort(Vector<Pair<int, int>> &array);
+	void _open_sidepanel();
+	void _select_with_transition_button();
 
 	String _get_root_playback_path(String &r_node_directory);
 
