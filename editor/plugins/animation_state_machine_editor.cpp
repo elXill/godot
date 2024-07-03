@@ -247,7 +247,7 @@ void AnimationNodeStateMachineEditor::_state_machine_gui_input(const Ref<InputEv
 			};
 			Vector2 cpoint = Geometry2D::get_closest_point_to_segment(mb->get_position(), s);
 			float d = cpoint.distance_to(mb->get_position());
-			if (d > transition_lines[i].width) {
+			if (d > transition_lines[i].width || transition_lines[i].hidden) {
 				continue;
 			}
 
@@ -264,14 +264,8 @@ void AnimationNodeStateMachineEditor::_state_machine_gui_input(const Ref<InputEv
 
 			Ref<AnimationNodeStateMachineTransition> tr = state_machine->get_transition(closest);
 			if (!state_machine->is_transition_across_group(closest)) {
-				print_line("0");
-				print_line(selected_transition_index);
-				print_line(tr);
 				EditorNode::get_singleton()->push_item(tr.ptr(), "", true);
 			} else {
-				print_line("1");
-				print_line(selected_transition_index);
-				print_line(tr);
 				EditorNode::get_singleton()->push_item(tr.ptr(), "", true);
 				EditorNode::get_singleton()->push_item(nullptr, "", true);
 			}
@@ -504,10 +498,9 @@ void AnimationNodeStateMachineEditor::_state_machine_gui_input(const Ref<InputEv
 				};
 				Vector2 cpoint = Geometry2D::get_closest_point_to_segment(mm->get_position(), s);
 				float d = cpoint.distance_to(mm->get_position());
-				if (d > transition_lines[i].width) {
+				if (d > transition_lines[i].width || transition_lines[i].hidden) {
 					continue;
 				}
-
 				if (d < closest_d) {
 					closest = i;
 					closest_d = d;
@@ -1734,6 +1727,7 @@ void AnimationNodeStateMachineEditor::_save_group_names() {
 			new_group_names.set(i, node_group_name_line[i]->get_text());
 			node_group_labels[i]->set_text(node_group_name_line[i]->get_text());
 			node_group_name_line[i]->set_placeholder(node_group_name_line[i]->get_text());
+			node_group_name_line[i]->set_text(String());
 		}
 	}
 
@@ -1752,17 +1746,13 @@ void AnimationNodeStateMachineEditor::_update_transition_buttons() {
 
 	//Transition Button filtration and populating it's index array
 	for (int i = 0; i < transition_lines.size(); i++) {
-		print_line(transition_lines.size());
-		print_line(state_machine->get_transition_count());
 		if (transition_visible_checkbox_4->is_pressed()) {
 			if (!(state_machine->_get_node_visibility(transition_lines[i].from_node) && state_machine->_get_node_visibility(transition_lines[i].to_node))) {
-				print_line(String(transition_lines[i].from_node) + "-->" + String(transition_lines[i].to_node) + "  Invisible");
 				continue;
 			}
 		}
 		if (transition_hidden_checkbox_4->is_pressed()) {
 			if ((state_machine->_get_node_visibility(transition_lines[i].from_node) && state_machine->_get_node_visibility(transition_lines[i].to_node))) {
-				print_line(String(transition_lines[i].from_node) + "-->" + String(transition_lines[i].to_node) + "  Visible");
 				continue;
 			}
 		}
@@ -1929,9 +1919,6 @@ void AnimationNodeStateMachineEditor::_select_with_transition_button() {
 				button_index = i;
 				Ref<AnimationNodeStateMachineTransition> tr = state_machine->get_transition(transition_to_index_priority[button_index].first);
 				EditorNode::get_singleton()->push_item(tr.ptr(), "", true);
-				print_line("2");
-				print_line(transition_to_index_priority[button_index].first);
-				print_line(tr);
 				break;
 			}
 		} else {
@@ -1939,9 +1926,6 @@ void AnimationNodeStateMachineEditor::_select_with_transition_button() {
 				button_index = i - transition_to_index_priority.size();
 				Ref<AnimationNodeStateMachineTransition> tr = state_machine->get_transition(transition_from_index_priority[button_index].first);
 				EditorNode::get_singleton()->push_item(tr.ptr(), "", true);
-				print_line("3");
-				print_line(transition_from_index_priority[button_index].first);
-				print_line(tr);
 				break;
 			}
 		}
