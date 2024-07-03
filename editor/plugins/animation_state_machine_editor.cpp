@@ -264,8 +264,14 @@ void AnimationNodeStateMachineEditor::_state_machine_gui_input(const Ref<InputEv
 
 			Ref<AnimationNodeStateMachineTransition> tr = state_machine->get_transition(closest);
 			if (!state_machine->is_transition_across_group(closest)) {
+				print_line("0");
+				print_line(selected_transition_index);
+				print_line(tr);
 				EditorNode::get_singleton()->push_item(tr.ptr(), "", true);
 			} else {
+				print_line("1");
+				print_line(selected_transition_index);
+				print_line(tr);
 				EditorNode::get_singleton()->push_item(tr.ptr(), "", true);
 				EditorNode::get_singleton()->push_item(nullptr, "", true);
 			}
@@ -1040,10 +1046,6 @@ void AnimationNodeStateMachineEditor::_state_machine_draw() {
 		Vector2 ofs_to = (dragging_selected && selected_nodes.has(tl.to_node)) ? drag_ofs : Vector2();
 		tl.to = (state_machine->get_node_position(tl.to_node) * EDSCALE) + ofs_to - state_machine->get_graph_offset() * EDSCALE;
 
-		if (!state_machine->_get_node_visibility(tl.from_node) || !state_machine->_get_node_visibility(tl.to_node)) {
-			continue;
-		}
-
 		Ref<AnimationNodeStateMachineTransition> tr = state_machine->get_transition(i);
 		tl.disabled = bool(tr->get_advance_mode() == AnimationNodeStateMachineTransition::ADVANCE_MODE_DISABLED);
 		tl.auto_advance = bool(tr->get_advance_mode() == AnimationNodeStateMachineTransition::ADVANCE_MODE_AUTO);
@@ -1055,6 +1057,10 @@ void AnimationNodeStateMachineEditor::_state_machine_draw() {
 		tl.fade_ratio = 0.0;
 		tl.hidden = false;
 		tl.is_across_group = state_machine->is_transition_across_group(i);
+
+		if (!state_machine->_get_node_visibility(tl.from_node) || !state_machine->_get_node_visibility(tl.to_node)) {
+			tl.hidden = true;
+		}
 
 		if (state_machine->has_transition(tl.to_node, tl.from_node)) { //offset if same exists
 			Vector2 offset = -(tl.from - tl.to).normalized().orthogonal() * tr_bidi_offset;
@@ -1745,29 +1751,32 @@ void AnimationNodeStateMachineEditor::_update_transition_buttons() {
 	transition_from_index_priority.clear();
 
 	//Transition Button filtration and populating it's index array
-	for (int i = 0; i < state_machine->get_transition_count(); i++) {
+	for (int i = 0; i < transition_lines.size(); i++) {
+		print_line(transition_lines.size());
+		print_line(state_machine->get_transition_count());
 		if (transition_visible_checkbox_4->is_pressed()) {
-			if (!(state_machine->_get_node_visibility(state_machine->get_transition_from(i)) && state_machine->_get_node_visibility(state_machine->get_transition_to(i)))) {
+			if (!(state_machine->_get_node_visibility(transition_lines[i].from_node) && state_machine->_get_node_visibility(transition_lines[i].to_node))) {
+				print_line(String(transition_lines[i].from_node) + "-->" + String(transition_lines[i].to_node) + "  Invisible");
 				continue;
 			}
 		}
 		if (transition_hidden_checkbox_4->is_pressed()) {
-			if (state_machine->_get_node_visibility(state_machine->get_transition_from(i)) && state_machine->_get_node_visibility(state_machine->get_transition_to(i))) {
+			if ((state_machine->_get_node_visibility(transition_lines[i].from_node) && state_machine->_get_node_visibility(transition_lines[i].to_node))) {
+				print_line(String(transition_lines[i].from_node) + "-->" + String(transition_lines[i].to_node) + "  Visible");
 				continue;
 			}
 		}
-		if (transition_to_checkbox_4->is_pressed() && state_machine->get_transition_to(i) == selected_node) {
+		if (transition_to_checkbox_4->is_pressed() && transition_lines[i].to_node == selected_node) {
 			continue;
 		}
-		if (transition_from_checkbox_4->is_pressed() && state_machine->get_transition_from(i) == selected_node) {
+		if (transition_from_checkbox_4->is_pressed() && transition_lines[i].from_node == selected_node) {
 			continue;
 		}
-
-		if (state_machine->get_transition_from(i) == selected_node) {
-			transition_to_index_priority.push_back({ i, state_machine->get_transition(i)->get_priority() });
+		if (transition_lines[i].from_node == selected_node) {
+			transition_to_index_priority.push_back({ i, state_machine->get_transition(transition_lines[i].transition_index)->get_priority() });
 		}
-		if (state_machine->get_transition_to(i) == selected_node) {
-			transition_from_index_priority.push_back({ i, state_machine->get_transition(i)->get_priority() });
+		if (transition_lines[i].to_node == selected_node) {
+			transition_from_index_priority.push_back({ i, state_machine->get_transition(transition_lines[i].transition_index)->get_priority() });
 		}
 	}
 
@@ -1920,6 +1929,9 @@ void AnimationNodeStateMachineEditor::_select_with_transition_button() {
 				button_index = i;
 				Ref<AnimationNodeStateMachineTransition> tr = state_machine->get_transition(transition_to_index_priority[button_index].first);
 				EditorNode::get_singleton()->push_item(tr.ptr(), "", true);
+				print_line("2");
+				print_line(transition_to_index_priority[button_index].first);
+				print_line(tr);
 				break;
 			}
 		} else {
@@ -1927,6 +1939,9 @@ void AnimationNodeStateMachineEditor::_select_with_transition_button() {
 				button_index = i - transition_to_index_priority.size();
 				Ref<AnimationNodeStateMachineTransition> tr = state_machine->get_transition(transition_from_index_priority[button_index].first);
 				EditorNode::get_singleton()->push_item(tr.ptr(), "", true);
+				print_line("3");
+				print_line(transition_from_index_priority[button_index].first);
+				print_line(tr);
 				break;
 			}
 		}
