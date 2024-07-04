@@ -1786,7 +1786,6 @@ void AnimationNodeStateMachineEditor::_update_transition_buttons() {
 	}
 
 	for (int i = 0; i < transition_to_index_priority.size(); i++) {
-		transition_button_direction[i]->set_text(">");
 		transition_button_name_label[i]->set_text(String(state_machine->get_transition_to(transition_to_index_priority[i].first)));
 		transition_button_xfade_label[i]->set_text("Xfade:" + String::num(state_machine->get_transition(transition_to_index_priority[i].first)->get_xfade_time(), 2) + String(TTR(" s")));
 		transition_button_priority_label[i]->set_text(String::num(transition_to_index_priority[i].second));
@@ -1797,9 +1796,20 @@ void AnimationNodeStateMachineEditor::_update_transition_buttons() {
 		} else {
 			transition_buttons[i]->set_modulate(Color(.5, .5, .5));
 		}
+
+		switch (state_machine->get_transition(transition_to_index_priority[i].first)->get_switch_mode()) {
+			case AnimationNodeStateMachineTransition::SwitchMode::SWITCH_MODE_IMMEDIATE: {
+				transition_button_direction[i]->set_text(">");
+			} break;
+			case AnimationNodeStateMachineTransition::SwitchMode::SWITCH_MODE_SYNC: {
+				transition_button_direction[i]->set_text("l>");
+			} break;
+			case AnimationNodeStateMachineTransition::SwitchMode::SWITCH_MODE_AT_END: {
+				transition_button_direction[i]->set_text(">l");
+			} break;
+		}
 	}
 	for (int i = transition_to_index_priority.size(); i < transition_button_count; i++) {
-		transition_button_direction[i]->set_text("<");
 		transition_button_name_label[i]->set_text(String(state_machine->get_transition_from(transition_from_index_priority[i - transition_to_index_priority.size()].first)));
 		transition_button_xfade_label[i]->set_text("Xfade:" + String::num(state_machine->get_transition(transition_from_index_priority[i - transition_to_index_priority.size()].first)->get_xfade_time(), 2) + String(TTR(" s")));
 		transition_button_priority_label[i]->set_text(String::num(transition_from_index_priority[i - transition_to_index_priority.size()].second));
@@ -1809,6 +1819,17 @@ void AnimationNodeStateMachineEditor::_update_transition_buttons() {
 			transition_buttons[i]->set_modulate(Color(1, 1, 1));
 		} else {
 			transition_buttons[i]->set_modulate(Color(.5, .5, .5));
+		}
+		switch (state_machine->get_transition(transition_from_index_priority[i - transition_to_index_priority.size()].first)->get_switch_mode()) {
+			case AnimationNodeStateMachineTransition::SwitchMode::SWITCH_MODE_IMMEDIATE: {
+				transition_button_direction[i]->set_text("<");
+			} break;
+			case AnimationNodeStateMachineTransition::SwitchMode::SWITCH_MODE_SYNC: {
+				transition_button_direction[i]->set_text("<l");
+			} break;
+			case AnimationNodeStateMachineTransition::SwitchMode::SWITCH_MODE_AT_END: {
+				transition_button_direction[i]->set_text("l<");
+			} break;
 		}
 	}
 }
