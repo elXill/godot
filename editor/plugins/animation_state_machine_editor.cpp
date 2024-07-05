@@ -1786,18 +1786,19 @@ void AnimationNodeStateMachineEditor::_update_transition_buttons() {
 	}
 
 	for (int i = 0; i < transition_to_index_priority.size(); i++) {
-		transition_button_name_label[i]->set_text(String(state_machine->get_transition_to(transition_to_index_priority[i].first)));
-		transition_button_xfade_label[i]->set_text("Xfade:" + String::num(state_machine->get_transition(transition_to_index_priority[i].first)->get_xfade_time(), 2) + String(TTR(" s")));
+		int to_index = transition_to_index_priority[i].first;
+		transition_button_name_label[i]->set_text(String(state_machine->get_transition_to(to_index)));
+		transition_button_xfade_label[i]->set_text("Xfade: " + String::num(state_machine->get_transition(to_index)->get_xfade_time(), 2) + String(TTR(" s")));
+		transition_button_condition_label[i]->set_text("Cond: " + _parse_condition(to_index));
 		transition_button_priority_label[i]->set_text(String::num(transition_to_index_priority[i].second));
 		transition_buttons[i]->set_visible(true);
 		transition_buttons[i]->set_self_modulate(Color(0.78, 1, 0.6));
-		if (state_machine->_get_node_visibility(state_machine->get_transition_to(transition_to_index_priority[i].first))) {
+		if (state_machine->_get_node_visibility(state_machine->get_transition_to(to_index))) {
 			transition_buttons[i]->set_modulate(Color(1, 1, 1));
 		} else {
 			transition_buttons[i]->set_modulate(Color(.5, .5, .5));
 		}
-
-		switch (state_machine->get_transition(transition_to_index_priority[i].first)->get_switch_mode()) {
+		switch (state_machine->get_transition(to_index)->get_switch_mode()) {
 			case AnimationNodeStateMachineTransition::SwitchMode::SWITCH_MODE_IMMEDIATE: {
 				transition_button_direction[i]->set_text(">");
 			} break;
@@ -1810,17 +1811,20 @@ void AnimationNodeStateMachineEditor::_update_transition_buttons() {
 		}
 	}
 	for (int i = transition_to_index_priority.size(); i < transition_button_count; i++) {
-		transition_button_name_label[i]->set_text(String(state_machine->get_transition_from(transition_from_index_priority[i - transition_to_index_priority.size()].first)));
-		transition_button_xfade_label[i]->set_text("Xfade:" + String::num(state_machine->get_transition(transition_from_index_priority[i - transition_to_index_priority.size()].first)->get_xfade_time(), 2) + String(TTR(" s")));
+		int from_index = transition_from_index_priority[i - transition_to_index_priority.size()].first;
+
+		transition_button_name_label[i]->set_text(String(state_machine->get_transition_from(from_index)));
+		transition_button_xfade_label[i]->set_text("Xfade: " + String::num(state_machine->get_transition(from_index)->get_xfade_time(), 2) + String(TTR(" s")));
+		transition_button_condition_label[i]->set_text("Cond: " + _parse_condition(from_index));
 		transition_button_priority_label[i]->set_text(String::num(transition_from_index_priority[i - transition_to_index_priority.size()].second));
 		transition_buttons[i]->set_visible(true);
 		transition_buttons[i]->set_self_modulate(Color(1, .56, .5));
-		if (state_machine->_get_node_visibility(state_machine->get_transition_from(transition_from_index_priority[i - transition_to_index_priority.size()].first))) {
+		if (state_machine->_get_node_visibility(state_machine->get_transition_from(from_index))) {
 			transition_buttons[i]->set_modulate(Color(1, 1, 1));
 		} else {
 			transition_buttons[i]->set_modulate(Color(.5, .5, .5));
 		}
-		switch (state_machine->get_transition(transition_from_index_priority[i - transition_to_index_priority.size()].first)->get_switch_mode()) {
+		switch (state_machine->get_transition(from_index)->get_switch_mode()) {
 			case AnimationNodeStateMachineTransition::SwitchMode::SWITCH_MODE_IMMEDIATE: {
 				transition_button_direction[i]->set_text("<");
 			} break;
@@ -1832,6 +1836,38 @@ void AnimationNodeStateMachineEditor::_update_transition_buttons() {
 			} break;
 		}
 	}
+}
+
+String AnimationNodeStateMachineEditor::_parse_condition(int &index) {
+	String condition = state_machine->get_transition(index)->get_advance_expression();
+	Vector<String> tokens = condition.rsplit(" ");
+	String result;
+	bool chr_flag;
+	String parsed_token;
+
+	for (int i = 0; i < tokens.size(); i++) {
+		String token = tokens[i];
+
+		if (token == "and" || token == "or" || token == "&&" || token == "||") {
+			result = parsed_token;
+			parsed_token += token;
+			parsed_token += " ";
+			continue;
+		}
+		chr_flag = false;
+		for (int k = 0; k < token.length(); k++) {
+			if (token[k] == U'!' || token[k] == U'&' || token[k] == U'|' || token[k] == U'(' || token[k] == U')') {
+				parsed_token += token[k];
+			} else if (!chr_flag) {
+				parsed_token += token[k];
+				chr_flag = true;
+			}
+		}
+		parsed_token += " ";
+	}
+
+	result = parsed_token;
+	return result;
 }
 
 void AnimationNodeStateMachineEditor::_bubble_sort(Vector<Pair<int, int>> &array) {
@@ -2399,19 +2435,33 @@ AnimationNodeStateMachineEditor::AnimationNodeStateMachineEditor() {
 				transition_button_name_label[i]->set_anchors_and_offsets_preset(PRESET_FULL_RECT);
 				transition_button_name_label[i]->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_CENTER);
 				transition_button_name_label[i]->set_vertical_alignment(VERTICAL_ALIGNMENT_TOP);
-				transition_button_name_label[i]->set_anchors_and_offsets_preset(PRESET_CENTER);
-				transition_button_name_label[i]->set_stretch_ratio(1);
+				transition_button_name_label[i]->set_h_size_flags(SIZE_EXPAND_FILL);
+				transition_button_name_label[i]->set_v_size_flags(SIZE_FILL);
+				transition_button_name_label[i]->set_stretch_ratio(3);
 				transition_button_name_label[i]->set_clip_text(true);
 				transition_button_name_label[i]->set_text_overrun_behavior(TextServer::OVERRUN_TRIM_ELLIPSIS);
 
+				transition_button_middle_low_cont[i] = memnew(HBoxContainer);
+				transition_button_mid_section[i]->add_child(transition_button_middle_low_cont[i]);
+
 				transition_button_xfade_label[i] = memnew(Label);
-				transition_button_mid_section[i]->add_child(transition_button_xfade_label[i]);
+				transition_button_middle_low_cont[i]->add_child(transition_button_xfade_label[i]);
+				transition_button_xfade_label[i]->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_LEFT);
+				transition_button_xfade_label[i]->set_vertical_alignment(VERTICAL_ALIGNMENT_BOTTOM);
 				transition_button_xfade_label[i]->add_theme_font_size_override("font_size", 10);
-				transition_button_xfade_label[i]->set_h_size_flags(SIZE_FILL);
-				transition_button_xfade_label[i]->set_v_size_flags(SIZE_EXPAND_FILL);
-				transition_button_xfade_label[i]->set_stretch_ratio(0.1);
+				transition_button_xfade_label[i]->set_custom_minimum_size(Size2(80, 15));
 				transition_button_xfade_label[i]->set_clip_text(true);
 				transition_button_xfade_label[i]->set_text_overrun_behavior(TextServer::OVERRUN_TRIM_ELLIPSIS);
+
+				transition_button_condition_label[i] = memnew(Label);
+				transition_button_middle_low_cont[i]->add_child(transition_button_condition_label[i]);
+				transition_button_condition_label[i]->set_horizontal_alignment(HORIZONTAL_ALIGNMENT_LEFT);
+				transition_button_condition_label[i]->set_vertical_alignment(VERTICAL_ALIGNMENT_BOTTOM);
+				transition_button_condition_label[i]->add_theme_font_size_override("font_size", 10);
+				transition_button_condition_label[i]->set_h_size_flags(SIZE_EXPAND_FILL);
+				transition_button_condition_label[i]->set_custom_minimum_size(Size2(0, 15));
+				transition_button_condition_label[i]->set_clip_text(true);
+				transition_button_condition_label[i]->set_text_overrun_behavior(TextServer::OVERRUN_TRIM_ELLIPSIS);
 
 				transition_button_direction[i] = memnew(Label);
 				transition_button_elements[i]->add_child(transition_button_direction[i]);

@@ -146,6 +146,7 @@ class AnimationNodeStateMachineEditor : public AnimationTreeNodeEditorPlugin {
 	HBoxContainer *transition_button_elements[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
 	Label *transition_button_priority_label[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
 	VBoxContainer *transition_button_mid_section[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+	HBoxContainer *transition_button_middle_low_cont[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
 
 	Panel *transition_button_priority_panel[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
 	Panel *transition_button_name_panel[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
@@ -153,6 +154,7 @@ class AnimationNodeStateMachineEditor : public AnimationTreeNodeEditorPlugin {
 
 	Label *transition_button_name_label[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
 	Label *transition_button_xfade_label[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
+	Label *transition_button_condition_label[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
 	Label *transition_button_direction[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
 
 	LineEdit *node_group_name_line[AnimationNodeStateMachine::STATE_MACHINE_GROUPS_LIMIT] = { nullptr };
@@ -366,6 +368,7 @@ class AnimationNodeStateMachineEditor : public AnimationTreeNodeEditorPlugin {
 	void _bubble_sort(Vector<Pair<int, int>> &array);
 	void _open_sidepanel();
 	void _select_with_transition_button();
+	String _parse_condition(int &index);
 
 	String _get_root_playback_path(String &r_node_directory);
 
